@@ -1,0 +1,27 @@
+{
+  "name": "filedrop",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/express": "^4.17.13",
+    "@types/express-ws": "^3.0.1",
+    "@types/node": "^17.0.3",
+    "@types/websocket": "^1.0.4",
+    "@types/ws": "^8.2.2",
+    "express-ws": "^5.0.2",
+    "ramda": "^0.27.1",
+    "ua-parser-js": "^1.0.2",
+    "unique-names-generator": "^4.6.0",
+    "websocket-stream": "^5.5.2",
+    "ws": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/ramda": "^0.27.61"
+  }
+}
