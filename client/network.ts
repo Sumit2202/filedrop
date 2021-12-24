@@ -1,4 +1,5 @@
 import { or, map } from "ramda";
+import { ConnectionStates } from "./types";
 
 const window = (window : any) => ({
   url: () => or(window.URL, window.webkitURL),

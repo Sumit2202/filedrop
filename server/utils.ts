@@ -22,7 +22,9 @@ const {
 } = require("unique-names-generator");
 const parser = require("ua-parser-js");
 
-export const isPropPresent : any = propSatisfies(complement(isNil));
+export const isNotNil = complement(isNil);
+
+export const isPropPresent: any = propSatisfies(isNotNil);
 
 // return a unique Id
 export const getuuid = () => {
@@ -48,7 +50,7 @@ export const getuuid = () => {
     }
   }
   return uuid;
-}
+};
 
 //  const memoizer = (fun) => {
 //   let cache = {}
@@ -63,12 +65,12 @@ export const getuuid = () => {
 //   }
 // }
 
-export const Peer_ = (request : IncomingMessage, stream : any ) : Peer => ({
+export const Peer_ = (request: IncomingMessage, stream: any): Peer => ({
   state: {
-    timerId: 0,
+    timerId: null,
     lastBeat: Date.now(), // (MUTATION) gets set for keepalive
-    connectedTo : [],
-    stream : stream
+    connectedTo: [],
+    stream: stream,
   },
 
   operations: {
@@ -76,16 +78,18 @@ export const Peer_ = (request : IncomingMessage, stream : any ) : Peer => ({
 
     // IncomingRequest -> PeerId
     getPeerId: () => {
-      const replacePeerIdCookie = (request: IncomingMessage & { peerId: string }) => {
+      const replacePeerIdCookie = (
+        request: IncomingMessage & { peerId: string }
+      ) => {
         return request.headers.cookie?.replace("peerid=", "");
       };
 
       const peerIdProp = "peerId";
-      
+
       const isPeerIdPropPresent = isPropPresent(peerIdProp);
 
       //request -> peerId
-      const getPeerId_ : any = ifElse(
+      const getPeerId_: any = ifElse(
         isPeerIdPropPresent,
         prop("peerId"),
         replacePeerIdCookie
@@ -95,7 +99,7 @@ export const Peer_ = (request : IncomingMessage, stream : any ) : Peer => ({
     },
 
     //IncomingRequest -> Ip
-    getIp: () : string => {
+    getIp: (): string => {
       // ===================================================================
       //CODE TO RESUE:
       // const ip = [''];
@@ -126,7 +130,7 @@ export const Peer_ = (request : IncomingMessage, stream : any ) : Peer => ({
 
       // ===================================================================
 
-      let ip : string | undefined = "";
+      let ip: string | undefined = "";
       if (request.headers["x-forwarded-for"]) {
         ip = (request.headers["x-forwarded-for"] as string).split(/\s*,\s*/)[0];
       } else {
@@ -142,7 +146,8 @@ export const Peer_ = (request : IncomingMessage, stream : any ) : Peer => ({
 
     // IncomingRequest -> Boolean
     isRtcCapable: () => {
-      const getWebRtcIndex : any = (req: IncomingMessage) => req.url?.indexOf("webrtc");
+      const getWebRtcIndex: any = (req: IncomingMessage) =>
+        req.url?.indexOf("webrtc");
       return gt(-1, getWebRtcIndex(request));
     },
 
@@ -191,9 +196,8 @@ export const Peer_ = (request : IncomingMessage, stream : any ) : Peer => ({
         browser: ua.browser.name,
         type: ua.device.type,
         deviceName,
-        displayName
+        displayName,
       };
-    }
-    
+    },
   },
 });

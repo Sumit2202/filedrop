@@ -1,12 +1,12 @@
 
-enum ConnectionStates {
+export enum ConnectionStates {
     Connected,
     Connecting,
     Disconnected
   }
   
-  enum DisconnectedStateActions {
+export enum DisconnectedStateActions {
     Connect
   }
   
-  type InitialConnectionState = ConnectionStates.Disconnected;
+export type InitialConnectionState = ConnectionStates.Disconnected;
