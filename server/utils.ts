@@ -1,20 +1,16 @@
 import {
-  both,
   complement,
-  cond,
-  either,
-  equals,
-  hasPath,
-  identity,
   ifElse,
   isNil,
   prop,
   propSatisfies,
   gt,
   __,
+  curry,
+  compose,
 } from "ramda";
 import { IncomingMessage } from "http";
-import { Peer } from "./types";
+import { Message, MessageType, Peer, Room } from "./types";
 const {
   uniqueNamesGenerator,
   animals,
@@ -68,7 +64,7 @@ export const getuuid = () => {
 export const Peer_ = (request: IncomingMessage, stream: any): Peer => ({
   state: {
     timerId: null,
-    lastBeat: Date.now(), // (MUTATION) gets set for keepalive
+    lastBeat: Date.now(), // (MUTATION) gets set for keep alive
     connectedTo: [],
     stream: stream,
   },
@@ -176,10 +172,10 @@ export const Peer_ = (request: IncomingMessage, stream: any): Peer => ({
         style: "capital",
         getSeed: (peerId: any) => {
           const getHashcode = (str: string) => {
-            var hash = 0,
+            let hash = 0,
               i: number,
               chr: number;
-            for (i = 0; i < str.length; i++) {
+            for (let i = 0; i < str.length; i++) {
               chr = str.charCodeAt(i);
               hash = (hash << 5) - hash + chr;
               hash |= 0; // Convert to 32bit integer
@@ -201,3 +197,22 @@ export const Peer_ = (request: IncomingMessage, stream: any): Peer => ({
     },
   },
 });
+
+const getMessage = curry(
+  (body: any, type: string): MessageType => ({
+    type,
+    body,
+  })
+);
+
+// room is an obj with peerId as key and peer as value
+const getMsgBody = (room: Room): Message[] => {
+  return Object.keys(room).map((peerId) => ({
+    id: peerId,
+    name: room[peerId].operations.getPeerName(),
+    supportsRtc: room[peerId].operations.isRtcCapable(),
+  }));
+};
+
+// Get peer list message body content
+export const getPeerListMsg = compose(getMessage(__, "peer-list"), getMsgBody);

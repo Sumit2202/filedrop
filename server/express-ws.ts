@@ -1,5 +1,11 @@
 import expressWs from "express-ws";
-import { Peer_, isPropPresent, getuuid, isNotNil } from "./utils";
+import {
+  Peer_,
+  isPropPresent,
+  getuuid,
+  isNotNil,
+  getPeerListMsg,
+} from "./utils";
 import { IncomingHttpHeaders, IncomingMessage } from "http";
 import {
   assoc,
@@ -7,14 +13,18 @@ import {
   complement,
   compose,
   curry,
+  dissoc,
+  flip,
   gt,
   identity,
   ifElse,
   isNil,
+  or,
   prop,
+  tryCatch,
   __,
 } from "ramda";
-import { Message, MessageType, Peer, Room, ServerState } from "./types";
+import { Peer, Room, ServerState } from "./types";
 const express = require("express");
 const expressWebSocket = require("express-ws");
 const websocketStream = require("websocket-stream/stream");
@@ -54,18 +64,16 @@ app.ws("/", function (ws: any, req: any) {
   // Notify other peers in the room that a new peer has joined
   let peersInRoomObj: Room = rooms[peerIp];
 
-  // Get message body content
-  let getMsg = compose(getMessage(__, "peer-list"), msgBody);
-
-  // send this msg to all peers in the room
+  // send this msg to all peers in the room --> room is an obj with peerId as key and peer as value
+  let msgBody = getPeerListMsg(peersInRoomObj);
   Object.values(peersInRoomObj).forEach((peer) =>
-    sendMessage(peer, getMsg(peersInRoomObj), ws)
+    sendMessage(peer, msgBody, ws)
   );
 
   // bind message event handler to peer
-  stream.socket.on("message", (data: any) => {
+  peer.state.stream.socket.on("message", (data: any) => {
     console.log(data, "Message");
-    onMessage(data, peer);
+    onMessage(data, peer, ws);
   });
 
   keepAlive(peer, ws);
@@ -122,22 +130,40 @@ const sendMessage = (peer: Peer, message: any, ws: any) => {
   peer.state.stream.write(msg);
 };
 
-const msgBody = (peers: Room): Message[] => {
-  return Object.keys(peers).map((key) => ({
-    id: key,
-    name: peers[key].operations.getPeerName(),
-    supportsRtc: peers[key].operations.isRtcCapable(),
-  }));
+const onMessage = (data: any, peer: Peer, ws: any) => {
+  let JSONParser = tryCatch(JSON.parse, () =>
+    console.log("Invalid Message", data)
+  );
+  let message: any = JSONParser(data);
+
+  // messsage and message.type can be undefined
+  if (message && message.type) {
+    switch (message.type) {
+      case "disconnect":
+        kickPeerFromRoom(peer, ws);
+        break;
+      case "pong":
+        peer.state.lastBeat = Date.now();
+        break;
+    }
+  }
+  let peerIp = peer.operations.getIp();
+  let peerId = peer.operations.getPeerId();
+
+  // carry forward message to other peers in the room
+  if (message.to && rooms[peerIp]) {
+    // reciver of the message
+    let recipient = rooms[peerIp][message.to];
+
+    // fn which remove to from message and add sender id to message
+    let messageToRelayCreator = compose(dissocTo, assocSender(peerId));
+
+    sendMessage(recipient, messageToRelayCreator(message), ws);
+  }
 };
 
-const getMessage = curry(
-  (body: any, type: string): MessageType => ({
-    type,
-    body,
-  })
-);
-
-const onMessage = (data: any, peer: Peer) => {};
+const dissocTo = dissoc("to");
+const assocSender = assoc("sender");
 
 // implemented heart beat mechanism to keep connection alive
 const keepAlive = (peer: Peer, ws: any) => {
@@ -159,7 +185,7 @@ const keepAlive = (peer: Peer, ws: any) => {
   let isPeerAlive = compose(isLastBeatOlderThan60Sec, assignPeerLastBeat);
 
   // if peer is not active, kick him out
-  ifElse(isPeerAlive, identity, kickPeerFromRoom)(peer);
+  ifElse(isPeerAlive, identity, flip(kickPeerFromRoom)(ws))(peer);
 
   // send keep alive message to peer
   sendMessage(peer, { type: "ping" }, ws);
@@ -168,36 +194,59 @@ const keepAlive = (peer: Peer, ws: any) => {
   peer.state.timerId = setTimeout(() => keepAlive(peer, ws), timeout);
 };
 
-const kickPeerFromRoom = (peer: Peer) => {
-  // verify if room exists and peer inside that room exists
+const deleteRoom = (room: string) => dissoc(room, rooms);
 
-  // need a way when peerId is assigned, we use that, and same for ip
+const isRoomEmpty = (ip: string): boolean => {
+  return Object.keys(rooms[ip]).length === 0;
+};
+
+const doesIpExistWithinRoom = (ip: any): boolean => isNil(prop(ip, rooms));
+const doesPeerIdExistWithinRoom = (peerIp: any, peerId: any): boolean =>
+  isNil(prop(peerId, prop(peerIp, rooms)));
+
+const cancelPreviousKeepAliveTimer = (peer: Peer) => {
+  let peerAndTimerIdPresent = both(
+    isNotNil,
+    compose(isPropPresent("timerId"), prop("state"))
+  );
+  peerAndTimerIdPresent(peer) && clearTimeout(peer.state.timerId);
+};
+
+const kickPeerFromRoom = curry((peer: Peer, ws: any) => {
+  // verify if room exists and peer inside that room exists
+  let peerIp: string = peer.operations.getIp();
+  let peerId = peer.operations.getPeerId();
+
+  // Option II - need a way when peerId is assigned, we use that, and same for ip
   // let roomExists = compose(isNotNil, prop(peer.state.ip));
   // let peerExists = compose(isNotNil, prop(peer.state.id));
   // let isPeerInRoom = both(roomExists, peerExists);
 
-  // Since peer is to be kicked out, remove any timers that are set
-  cancelPreviousKeepAliveTimer(peer);
+  let peerOrRoomNotPresent: boolean = or(
+    doesIpExistWithinRoom(peerIp),
+    doesPeerIdExistWithinRoom(peerIp, peerId)
+  );
+
+  if (!peerOrRoomNotPresent) {
+    // Since peer is to be kicked out, remove any timers that are set
+    cancelPreviousKeepAliveTimer(peer);
+  }
 
   // remove peer from room
-  // delete this._rooms[peer.ip][peer.id];
+  rooms = dissoc(peerId, rooms[peerIp]);
 
   // close peer stream
   peer.state.stream.end();
 
-  // delete room if empty
-  // if (Object.keys(this._rooms[peer.ip]).length === 0) {
-  //   delete this._rooms[peer.ip];
-  // else {
-  // Notify other peers in the room that a peer has left
-  // let peersInRoomObj = this._rooms[peer.ip];
-  // let getMsg = compose(getMessage(__, "peer-list"), msgBody);
-  // Object.values(peersInRoomObj).forEach((peer) =>
-  //   sendMessage(peer, getMsg(peersInRoomObj), ws)
-  // );
-};
-
-const cancelPreviousKeepAliveTimer = (peer: Peer) => {
-  let peerAndTimerIdPresent = both(isNotNil, isPropPresent("timerId"));
-  peerAndTimerIdPresent(peer) && clearTimeout(peer.state.timerId);
-};
+  // if room is empty, delete room
+  if (isRoomEmpty(peerIp)) {
+    rooms = deleteRoom(peerIp);
+  } else {
+    //Notify peers in the room with updated list of peers
+    let peersInRoomObj = rooms[peerIp];
+    let msgBody = getPeerListMsg(peersInRoomObj);
+    Object.values(peersInRoomObj).forEach((peer) =>
+      sendMessage(peer, msgBody, ws)
+    );
+  }
+});
