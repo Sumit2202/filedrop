@@ -25,7 +25,7 @@ type PeerName = {
 
 export type Peer = {
   state: {
-    timerId: NodeJS.Timeout;
+    timerId: NodeJS.Timeout | null;
     lastBeat: number;
     connectedTo: Peer[];
     stream: any;

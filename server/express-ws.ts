@@ -19,7 +19,9 @@ import {
   identity,
   ifElse,
   isNil,
+  not,
   or,
+  path,
   prop,
   tryCatch,
   __,
@@ -175,14 +177,18 @@ const keepAlive = (peer: Peer, ws: any) => {
     return peer;
   };
 
-  let assignPeerLastBeat = ifElse(isNil, setLastBeat, identity);
+  let assignPeerLastBeat = ifElse(
+    compose(isNil, path(["state", "lastBeat"])),
+    setLastBeat,
+    identity
+  );
 
   // if peer`s last beat is older than 60 seconds, kick him out
   let isLastBeatOlderThan60Sec = (peer: Peer) => {
     return Date.now() - peer.state.lastBeat > 2 * timeout;
   };
 
-  let isPeerAlive = compose(isLastBeatOlderThan60Sec, assignPeerLastBeat);
+  let isPeerAlive = compose(not, isLastBeatOlderThan60Sec, assignPeerLastBeat);
 
   // if peer is not active, kick him out
   ifElse(isPeerAlive, identity, flip(kickPeerFromRoom)(ws))(peer);
@@ -209,7 +215,7 @@ const cancelPreviousKeepAliveTimer = (peer: Peer) => {
     isNotNil,
     compose(isPropPresent("timerId"), prop("state"))
   );
-  peerAndTimerIdPresent(peer) && clearTimeout(peer.state.timerId);
+  if (peerAndTimerIdPresent(peer)) clearTimeout(peer.state.timerId);
 };
 
 const kickPeerFromRoom = curry((peer: Peer, ws: any) => {
